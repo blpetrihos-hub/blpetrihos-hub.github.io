@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://blpetrihos-hub.github.io/sitemap.xml
