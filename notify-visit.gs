@@ -1,5 +1,8 @@
 /**
- * Resume site visit mailer for blpetrihos@wm.edu
+ * Resume site visit mailer.
+ *
+ * Create this project while signed into a personal Gmail, not blpetrihos@wm.edu.
+ * Mail goes to the Google account that owns the project.
  *
  * Deploy: script.google.com -> New project -> paste this file -> Deploy -> New deployment
  * Type: Web app
@@ -38,7 +41,7 @@ function doGet(e) {
   ].join("\n");
 
   MailApp.sendEmail({
-    to: "blpetrihos@wm.edu",
+    to: Session.getEffectiveUser().getEmail(),
     subject: "Resume site visit: " + city + ", " + country,
     body: body
   });
