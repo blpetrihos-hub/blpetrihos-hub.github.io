@@ -49,9 +49,20 @@ function doGet(e) {
   return ContentService.createTextOutput("ok");
 }
 
+function isBadCity_(city) {
+  city = String(city || "").trim();
+  return !city || /^unknown$/i.test(city) || /^district\s+\d+$/i.test(city);
+}
+
 function enrichGeo_(p) {
+  if (isBadCity_(p.city) && campusCity_(p)) {
+    p.city = campusCity_(p);
+    if (!p.region) p.region = "Virginia";
+    if (!p.country || p.country === "unknown") p.country = "United States";
+  }
+
   var ip = String(p.ip || "");
-  var needCity = !p.city || p.city === "unknown";
+  var needCity = isBadCity_(p.city);
   var needCountry = !p.country || p.country === "unknown";
   if (!ip || (!needCity && !needCountry && p.region && p.isp)) {
     return p;
@@ -59,17 +70,34 @@ function enrichGeo_(p) {
 
   var g = lookupIp_(ip);
   if (!g) {
+    if (needCity && campusCity_(p)) {
+      p.city = campusCity_(p);
+    }
     return p;
   }
-  if (needCity) p.city = g.city || p.city;
+  if (needCity && !isBadCity_(g.city)) p.city = g.city;
   if (!p.region) p.region = g.region || p.region;
   if (needCountry) p.country = g.country || p.country;
   if (!p.isp) p.isp = g.isp || p.isp;
+  if (isBadCity_(p.city) && campusCity_(p)) {
+    p.city = campusCity_(p);
+  }
   return p;
+}
+
+function campusCity_(p) {
+  var ip = String(p.ip || "");
+  var isp = String(p.isp || "");
+  var postal = String(p.postal || "");
+  if (/^128\.239\./.test(ip) || /william and mary/i.test(isp) || /^2318[567]$/.test(postal)) {
+    return "Williamsburg";
+  }
+  return "";
 }
 
 function lookupIp_(ip) {
   var urls = [
+    "https://get.geojs.io/v1/ip/geo/" + encodeURIComponent(ip) + ".json",
     "https://ipwho.is/" + encodeURIComponent(ip),
     "https://ipapi.co/" + encodeURIComponent(ip) + "/json/"
   ];
@@ -83,11 +111,15 @@ function lookupIp_(ip) {
       if (!g || g.success === false || g.error) {
         continue;
       }
+      var city = g.city || "";
+      if (isBadCity_(city)) {
+        continue;
+      }
       return {
-        city: g.city || "",
+        city: city,
         region: g.region || "",
         country: g.country_name || g.country || "",
-        isp: (g.connection && g.connection.isp) || g.org || ""
+        isp: (g.connection && g.connection.isp) || g.organization_name || g.org || ""
       };
     } catch (err) {}
   }

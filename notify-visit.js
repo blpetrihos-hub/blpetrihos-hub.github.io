@@ -4,6 +4,14 @@
     return;
   }
 
+  function usableCity(city) {
+    city = String(city || "").trim();
+    if (!city || /^unknown$/i.test(city) || /^district\s+\d+$/i.test(city)) {
+      return "";
+    }
+    return city;
+  }
+
   function withTimeout(promise, ms) {
     return Promise.race([
       promise,
@@ -22,37 +30,64 @@
 
   function sources() {
     return [
-      readJson("https://ipwho.is/").then(function (g) {
-        if (!g || g.success === false || !g.ip) throw new Error("ipwho");
-        return {
-          city: g.city || "",
-          region: g.region || "",
-          country: g.country || "",
-          ip: g.ip,
-          isp: (g.connection && g.connection.isp) || ""
-        };
-      }),
-      readJson("https://ipapi.co/json/").then(function (g) {
-        if (!g || g.error || !g.ip) throw new Error("ipapi");
-        return {
-          city: g.city || "",
-          region: g.region || "",
-          country: g.country_name || g.country || "",
-          ip: g.ip,
-          isp: g.org || ""
-        };
-      }),
       readJson("https://get.geojs.io/v1/ip/geo.json").then(function (g) {
         if (!g || !g.ip) throw new Error("geojs");
         return {
-          city: g.city || "",
+          city: usableCity(g.city),
           region: g.region || "",
           country: g.country || "",
           ip: g.ip,
           isp: g.organization_name || g.organization || ""
         };
+      }),
+      readJson("https://ipwho.is/").then(function (g) {
+        if (!g || g.success === false || !g.ip) throw new Error("ipwho");
+        return {
+          city: usableCity(g.city),
+          region: g.region || "",
+          country: g.country || "",
+          ip: g.ip,
+          isp: (g.connection && g.connection.isp) || "",
+          postal: g.postal || ""
+        };
+      }),
+      readJson("https://ipapi.co/json/").then(function (g) {
+        if (!g || g.error || !g.ip) throw new Error("ipapi");
+        return {
+          city: usableCity(g.city),
+          region: g.region || "",
+          country: g.country_name || g.country || "",
+          ip: g.ip,
+          isp: g.org || "",
+          postal: g.postal || ""
+        };
       })
     ];
+  }
+
+  function firstGood(promises) {
+    return new Promise(function (resolve) {
+      var pending = promises.length;
+      var fallback = null;
+      if (!pending) {
+        resolve({});
+        return;
+      }
+      promises.forEach(function (p) {
+        p.then(function (g) {
+          if (g && usableCity(g.city)) {
+            resolve(g);
+            return;
+          }
+          if (!fallback && g && g.ip) fallback = g;
+          pending -= 1;
+          if (pending === 0) resolve(fallback || {});
+        }).catch(function () {
+          pending -= 1;
+          if (pending === 0) resolve(fallback || {});
+        });
+      });
+    });
   }
 
   function ipOnly() {
@@ -64,11 +99,12 @@
   function ping(geo) {
     geo = geo || {};
     var q = new URLSearchParams({
-      city: geo.city || "",
+      city: usableCity(geo.city),
       region: geo.region || "",
       country: geo.country || "",
       ip: geo.ip || "",
       isp: geo.isp || "",
+      postal: geo.postal || "",
       page: location.href,
       ref: document.referrer || "",
       tz: (Intl.DateTimeFormat().resolvedOptions().timeZone) || "",
@@ -78,8 +114,11 @@
     fetch(ENDPOINT + "?" + q.toString(), { mode: "no-cors", keepalive: true }).catch(function () {});
   }
 
-  (typeof Promise.any === "function" ? Promise.any(sources()) : sources()[0])
-    .catch(ipOnly)
+  firstGood(sources())
+    .then(function (geo) {
+      if (geo && (usableCity(geo.city) || geo.ip)) return geo;
+      return ipOnly();
+    })
     .then(ping)
     .catch(function () { ping({}); });
 })();
