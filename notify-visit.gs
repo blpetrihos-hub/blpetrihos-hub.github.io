@@ -4,11 +4,9 @@
  * Create this project while signed into a personal Gmail, not blpetrihos@wm.edu.
  * Mail goes to the Google account that owns the project.
  *
- * Deploy: script.google.com -> New project -> paste this file -> Deploy -> New deployment
- * Type: Web app
- * Execute as: Me
- * Who has access: Anyone
- * Copy the web app URL into notify-visit.js as ENDPOINT.
+ * Deploy: script.google.com -> paste this file -> Deploy -> Manage deployments
+ * -> Edit -> New version. Same web app URL stays valid.
+ * Execute as: Me. Who has access: Anyone.
  */
 function doGet(e) {
   var p = (e && e.parameter) ? e.parameter : {};
@@ -20,6 +18,8 @@ function doGet(e) {
   if (stamp !== "|") {
     cache.put(stamp, "1", 600);
   }
+
+  p = enrichGeo_(p);
 
   var city = p.city || "unknown";
   var country = p.country || "unknown";
@@ -47,4 +47,49 @@ function doGet(e) {
   });
 
   return ContentService.createTextOutput("ok");
+}
+
+function enrichGeo_(p) {
+  var ip = String(p.ip || "");
+  var needCity = !p.city || p.city === "unknown";
+  var needCountry = !p.country || p.country === "unknown";
+  if (!ip || (!needCity && !needCountry && p.region && p.isp)) {
+    return p;
+  }
+
+  var g = lookupIp_(ip);
+  if (!g) {
+    return p;
+  }
+  if (needCity) p.city = g.city || p.city;
+  if (!p.region) p.region = g.region || p.region;
+  if (needCountry) p.country = g.country || p.country;
+  if (!p.isp) p.isp = g.isp || p.isp;
+  return p;
+}
+
+function lookupIp_(ip) {
+  var urls = [
+    "https://ipwho.is/" + encodeURIComponent(ip),
+    "https://ipapi.co/" + encodeURIComponent(ip) + "/json/"
+  ];
+  for (var i = 0; i < urls.length; i++) {
+    try {
+      var resp = UrlFetchApp.fetch(urls[i], { muteHttpExceptions: true, followRedirects: true });
+      if (resp.getResponseCode() !== 200) {
+        continue;
+      }
+      var g = JSON.parse(resp.getContentText());
+      if (!g || g.success === false || g.error) {
+        continue;
+      }
+      return {
+        city: g.city || "",
+        region: g.region || "",
+        country: g.country_name || g.country || "",
+        isp: (g.connection && g.connection.isp) || g.org || ""
+      };
+    } catch (err) {}
+  }
+  return null;
 }
