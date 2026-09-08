@@ -1,5 +1,5 @@
 (function () {
-  var ENDPOINT = "";
+  var ENDPOINT = "https://script.google.com/macros/s/AKfycbyld1ia6FZmU32fCf-U21cM1hj6c266xr8VEbfo6M7jnWxb2tYJkwikNApnpvGLX9lo/exec";
   if (!ENDPOINT || ENDPOINT.indexOf("https://script.google.com/") !== 0) {
     return;
   }
